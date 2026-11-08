@@ -355,6 +355,9 @@ void ComponentList::render(const Transform4x4f& parentTrans)
 
 		float rowHeight = getRowHeight(entry.data);
 		rowHeights[i] = rowHeight;
+		const float selectionWidth = entry.data.selectionWidth > 0.0f
+			? std::min(entry.data.selectionWidth, mSize.x())
+			: mSize.x();
 
 		if (y - mCameraOffset + rowHeight >= 0)
 		{
@@ -365,10 +368,24 @@ void ComponentList::render(const Transform4x4f& parentTrans)
 				if (selectorColor != bgColor && (selectorColor & 0xFF) != 0)
 				{
 					Renderer::setMatrix(trans);
-					Renderer::drawRect(0.0f, mSelectorBarOffset, mSize.x(), rowHeight,
+					Renderer::drawRect(0.0f, mSelectorBarOffset, selectionWidth, rowHeight,
 						selectorColor & 0xFFFFFF00 | (unsigned char)((selectorColor & 0xFF) * opacity),
 						selectorGradientColor & 0xFFFFFF00 | (unsigned char)((selectorGradientColor & 0xFF) * opacity),
 						selectorGradientHorz);
+				}
+
+				// Optional focus rails frame the row from outside its blue band.
+				// Keeping them outside the row prevents even transparent artwork
+				// from appearing to be crossed by the cyan lines.
+				if (mSelectionLineColor != 0 && mSelectionLineThickness > 0.0f)
+				{
+					Renderer::setMatrix(trans);
+					const float insetX = std::max(0.0f, mSelectionLineHorizontalInset);
+					const float lineWidth = std::max(0.0f, selectionWidth - insetX * 2.0f);
+					const float topY = mSelectorBarOffset - mSelectionLineThickness;
+					const float bottomY = mSelectorBarOffset + rowHeight;
+					Renderer::drawRect(insetX, topY, lineWidth, mSelectionLineThickness, mSelectionLineColor);
+					Renderer::drawRect(insetX, bottomY, lineWidth, mSelectionLineThickness, mSelectionLineColor);
 				}
 			}
 
@@ -377,7 +394,7 @@ void ComponentList::render(const Transform4x4f& parentTrans)
 				Renderer::setMatrix(trans);
 
 				float hotOpacity = 0.1f;
-				Renderer::drawRect(0.0f, y, mSize.x(), rowHeight,
+				Renderer::drawRect(0.0f, y, selectionWidth, rowHeight,
 					selectorColor & 0xFFFFFF00 | (unsigned char)((selectorColor & 0xFF) * opacity * hotOpacity),
 					selectorGradientColor & 0xFFFFFF00 | (unsigned char)((selectorGradientColor & 0xFF) * opacity * hotOpacity),
 					selectorGradientHorz);
@@ -391,7 +408,7 @@ void ComponentList::render(const Transform4x4f& parentTrans)
 					element.component->setColor(0xFFFF00FF);
 				else 
 				if (entry.data.group)
-					element.component->setColor(menuTheme->Group.color);
+					element.component->setColor(entry.data.groupColor != 0 ? entry.data.groupColor : menuTheme->Group.color);
 				else
 				{
 					if (!mReadOnly && entry.data.selectable && mFocused && i == mCursor)

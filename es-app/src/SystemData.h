@@ -36,6 +36,25 @@ struct GameCountInfo
 	long playTime;
 	std::string mostPlayed;
 	std::string lastPlayedDate;
+
+	// SNES family breakdown. These remain zero for other systems and let the
+	// SNES dossier show one combined library without flattening its variants.
+	int snesOfficialVariants;
+	int snesOfficialGames;
+	int snesHackVariants;
+	int snesHackGames;
+	int snesTranslationVariants;
+	int snesTranslationGames;
+	int snesAccessoryVariants;
+	int snesAccessoryGames;
+	std::string snesFavoriteDisplay;
+	std::string snesLastPlayedDisplay;
+	std::string snesLastPlayedGameDisplay;
+	std::string snesLastPlayedVariantDisplay;
+	std::string snesLibraryDisplay;
+	std::string snesPlayedDisplay;
+	std::string snesVariantNamesDisplay;
+	std::string snesAccessoryNamesDisplay;
 };
 
 struct SystemMetadata

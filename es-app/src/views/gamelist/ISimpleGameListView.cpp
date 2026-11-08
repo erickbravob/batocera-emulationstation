@@ -28,7 +28,7 @@
 #include "guis/GuiGameAchievements.h"
 
 ISimpleGameListView::ISimpleGameListView(Window* window, FolderData* root, bool temporary) : IGameListView(window, root),
-	mHeaderText(window), mHeaderImage(window), mBackground(window), mFolderPath(window), mOnExitPopup(nullptr), mLastParentFolderData(nullptr),
+	mHeaderText(window), mHeaderImage(window), mBackground(window), mFolderPath(window), mOnExitPopup(nullptr), mReturnToSystemOnBack(false), mHideVariantParentFolder(false), mLastParentFolderData(nullptr),
 	mYButton("y"), mXButton("x"), mOKButton("OK"), mSelectButton("select")
 {
 	mExtraMode = ThemeData::ExtraImportType::ALL_EXTRAS;
@@ -136,6 +136,34 @@ void ISimpleGameListView::moveToFolder(FolderData* folder)
 		setCursor(cursor);	
 }
 
+void ISimpleGameListView::openVariantFolder(FolderData* folder)
+{
+	while (mCursorStack.size())
+		mCursorStack.pop();
+
+	mReturnToSystemOnBack = false;
+	mHideVariantParentFolder = false;
+
+	if (folder == nullptr)
+	{
+		repopulate();
+		return;
+	}
+
+	mCursorStack.push(folder);
+	mReturnToSystemOnBack = true;
+	// This is a direct library view launched from the SNES selector, not a
+	// browsable subfolder. Keep the normal Back action, but do not inject the
+	// synthetic ".." row (which uses the SNES system logo and looks like a
+	// nested/exit entry).
+	mHideVariantParentFolder = true;
+	populateList(folder->getChildrenListToDisplay());
+
+	FileData* cursor = getCursor();
+	if (cursor != nullptr)
+		setCursor(cursor);
+}
+
 void ISimpleGameListView::toggleFavoritesFilter()
 {
 	FileData* cursor = getCursor();
@@ -215,7 +243,23 @@ void ISimpleGameListView::update(const int deltaTime)
 
 void ISimpleGameListView::goBack()
 {
-	if (mCursorStack.size())
+	if (mReturnToSystemOnBack)
+	{
+		mReturnToSystemOnBack = false;
+		mHideVariantParentFolder = false;
+		onFocusLost();
+		SystemData* returnSystem = mRoot != nullptr ? mRoot->getSystem() : nullptr;
+		if (returnSystem != nullptr)
+		{
+			const std::string systemName = returnSystem->getName();
+			if (systemName == "sgb" || systemName == "satellaview" || systemName == "sufami" ||
+				systemName == "snes-msu1" || systemName == "sgb-msu1")
+				returnSystem = SystemData::getSystem("snes");
+		}
+		if (returnSystem != nullptr)
+			ViewController::get()->goToSystemView(returnSystem);
+	}
+	else if (mCursorStack.size())
 	{
 		auto top = mCursorStack.top();
 		mCursorStack.pop();
@@ -242,7 +286,11 @@ void ISimpleGameListView::goBack()
 		onFocusLost();
 		SystemData* systemToView = getCursor()->getSystem();
 
-		if (systemToView->isGroupChildSystem())
+		const std::string systemName = systemToView->getName();
+		if (systemName == "sgb" || systemName == "satellaview" || systemName == "sufami" ||
+			systemName == "snes-msu1" || systemName == "sgb-msu1")
+			systemToView = SystemData::getSystem("snes");
+		else if (systemToView->isGroupChildSystem())
 			systemToView = systemToView->getParentGroupSystem();
 		else if (systemToView->isCollection())
 			systemToView = CollectionSystemManager::get()->getSystemToView(systemToView);

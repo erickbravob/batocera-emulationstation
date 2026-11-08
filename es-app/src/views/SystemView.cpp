@@ -27,6 +27,7 @@
 #include "TextToSpeech.h"
 #include "BindingManager.h"
 #include "guis/GuiRetroAchievements.h"
+#include "guis/GuiSnesVariantSelector.h"
 #include "components/CarouselComponent.h"
 
 SystemView::SystemView(Window* window) : GuiComponent(window),
@@ -367,6 +368,31 @@ void SystemView::showNetplay()
 		mWindow->pushGui(new GuiNetPlay(mWindow));
 }
 
+void SystemView::openSelectedSystem()
+{
+	SystemData* system = getSelected();
+	if (system != nullptr && system->getName() == "snes" && GuiSnesVariantSelector::hasVariants(system))
+	{
+		GuiSnesVariantSelector::openVariant(system, GuiSnesVariantSelector::getDefaultVariant(system));
+		return;
+	}
+
+	ViewController::get()->goToGameList(system);
+}
+
+void SystemView::showSnesVariantSelector()
+{
+	SystemData* system = getSelected();
+	if (system == nullptr || system->getName() != "snes" || !GuiSnesVariantSelector::hasVariants(system))
+	{
+		mCarousel.setCursor(SystemData::getRandomSystem());
+		return;
+	}
+
+	mCarousel.stopScrolling();
+	mWindow->pushGui(new GuiSnesVariantSelector(mWindow, system));
+}
+
 SystemData* SystemView::getSelected()
 {
 	return mCarousel.getSelected();
@@ -492,7 +518,7 @@ bool SystemView::input(InputConfig* config, Input input)
 		if (config->isMappedTo(BUTTON_OK, input))
 		{
 			mCarousel.stopScrolling();
-			ViewController::get()->goToGameList(getSelected());
+			openSelectedSystem();
 			return true;
 		}
 
@@ -625,7 +651,7 @@ void SystemView::update(int deltaTime)
 	// It used to do so only when netplay was enabled, and otherwise just repeated the quick
 	// search already bound to the short press.
 	if (mYButton.isLongPressed(deltaTime))
-		mCarousel.setCursor(SystemData::getRandomSystem());
+		showSnesVariantSelector();
 }
 
 void SystemView::updateExtraTextBinding()
@@ -894,19 +920,24 @@ std::vector<HelpPrompt> SystemView::getHelpPrompts()
 {
 	std::vector<HelpPrompt> prompts = mCarousel.getHelpPrompts();
 
-	prompts.push_back(HelpPrompt(BUTTON_OK, _("SELECT"), [&] {ViewController::get()->goToGameList(getSelected()); }));
+	prompts.push_back(HelpPrompt(BUTTON_OK, _("SELECT"), [&] { openSelectedSystem(); }));
 
 	bool netPlay = SystemData::isNetplayActivated() && SystemConf::getInstance()->getBool("global.netplay");
 
 	if (netPlay)
 	{
 		prompts.push_back(HelpPrompt("x", _("NETPLAY"), [&] { showNetplay(); }));
-		prompts.push_back(HelpPrompt("y", _("SEARCH") + std::string("/") + _("RANDOM"), [&] { showQuickSearch(); })); // QUICK 
+		if (getSelected() != nullptr && getSelected()->getName() == "snes" && GuiSnesVariantSelector::hasVariants(getSelected()))
+			prompts.push_back(HelpPrompt("y", "VARIANTES SNES", [&] { showSnesVariantSelector(); }));
+		else
+			prompts.push_back(HelpPrompt("y", _("SEARCH") + std::string("/") + _("RANDOM"), [&] { showQuickSearch(); })); // QUICK 
 	}
 	else
 	{
 		prompts.push_back(HelpPrompt("x", _("RANDOM")));
-		if (SystemData::getSystem("all") != nullptr)
+		if (getSelected() != nullptr && getSelected()->getName() == "snes" && GuiSnesVariantSelector::hasVariants(getSelected()))
+			prompts.push_back(HelpPrompt("y", "VARIANTES SNES", [&] { showSnesVariantSelector(); }));
+		else if (SystemData::getSystem("all") != nullptr)
 			prompts.push_back(HelpPrompt("y", _("SEARCH") + std::string("/") + _("RANDOM"), [&] { showQuickSearch(); })); // QUICK 
 		else
 			prompts.push_back(HelpPrompt("y", _("RANDOM"), [&] { mCarousel.setCursor(SystemData::getRandomSystem()); }));

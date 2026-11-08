@@ -62,6 +62,29 @@ std::string getLangFlag(const std::string lang)
 	return it->second;
 };
 
+std::string getSnesLocalizedFolderName(FileData* file, const std::string& originalName)
+{
+	if (file == nullptr || file->getType() != FOLDER || file->getSystem() == nullptr || file->getSystem()->getName() != "snes")
+		return originalName;
+
+	const std::string folder = Utils::String::toLower(file->getFileName());
+	if (folder == "usa") return "REGIÓN USA";
+	if (folder == "europe" || folder == "europa") return "REGIÓN EUROPA";
+	if (folder == "japan" || folder == "japon") return "REGIÓN JAPÓN";
+	if (folder == "hacks") return "HACKS";
+	if (folder == "translates") return "TRADUCCIONES";
+
+	FileData* parent = file->getParent();
+	if (parent == nullptr || Utils::String::toLower(parent->getFileName()) != "translates")
+		return originalName;
+
+	if (folder == "english") return "INGLÉS";
+	if (folder == "portugues" || folder == "portuguese" || folder == "português") return "PORTUGUÉS";
+	if (folder == "spanish" || folder == "espanol" || folder == "español") return "ESPAÑOL";
+
+	return originalName;
+}
+
 GameNameFormatter::GameNameFormatter(SystemData* system)
 {
 	mSortId = system->getSortId();
@@ -121,6 +144,7 @@ std::string valueOrDefault(const std::string value, const std::string defaultVal
 std::string GameNameFormatter::getDisplayName(FileData* fd, bool showFolderIcon, bool favoriteIcon, bool tagIcons)
 {
 	std::string name = fd->getName();
+	name = getSnesLocalizedFolderName(fd, name);
 
 	bool showSystemNameByFile = (fd->getType() == GAME || fd->getParent() == nullptr || fd->getParent()->getName() != "collections");
 	if (showSystemNameByFile)

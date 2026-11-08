@@ -36,6 +36,10 @@ struct ComponentListRow
 
 	bool group;
 	bool selectable;
+	// Optional row-specific selection width; zero preserves the list's full width.
+	float selectionWidth = 0.0f;
+	// Optional per-section tint; zero preserves the menu theme's default.
+	unsigned int groupColor = 0;
 	std::vector<ComponentListElement> elements;
 
 	// The input handler is called when the user enters any input while this row is highlighted (including up/down).
@@ -90,6 +94,12 @@ public:
 	void onFocusLost() override;
 
 	void setUpdateType(ComponentListFlags::UpdateType updateType) { mUpdateType = updateType;  }
+	void setSelectionLines(unsigned int color, float horizontalInset, float thickness)
+	{
+		mSelectionLineColor = color;
+		mSelectionLineHorizontalInset = horizontalInset;
+		mSelectionLineThickness = thickness;
+	}
 
 	bool moveCursor(int amt);
 	inline int getCursorId() const { return mCursor; }
@@ -139,6 +149,9 @@ private:
 
 	float mSelectorBarOffset;
 	float mCameraOffset;
+	unsigned int mSelectionLineColor = 0;
+	float mSelectionLineHorizontalInset = 0.0f;
+	float mSelectionLineThickness = 0.0f;
 
 	ComponentListFlags::UpdateType mUpdateType;
 

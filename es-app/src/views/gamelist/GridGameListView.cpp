@@ -151,7 +151,7 @@ void GridGameListView::populateList(const std::vector<FileData*>& files)
 	{
 		bool showParentFolder = mRoot->getSystem()->getShowParentFolder();
 
-		if (mCursorStack.size() && showParentFolder)
+		if (mCursorStack.size() && showParentFolder && !mHideVariantParentFolder)
 		{
 			auto top = mCursorStack.top();
 
@@ -194,7 +194,7 @@ void GridGameListView::populateList(const std::vector<FileData*>& files)
 			mGrid.add(formatter.getDisplayName(file, file->getType() == FOLDER && Utils::FileSystem::exists(getImagePath(file))), getImagePath(file), file);
 
 		// if we have the ".." PLACEHOLDER, then select the first game instead of the placeholder
-		if (showParentFolder && mCursorStack.size() && mGrid.size() > 1 && mGrid.getCursorIndex() == 0)
+		if (showParentFolder && mCursorStack.size() && !mHideVariantParentFolder && mGrid.size() > 1 && mGrid.getCursorIndex() == 0)
 			mGrid.setCursorIndex(1);
 	}
 	else

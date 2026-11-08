@@ -425,6 +425,21 @@ void ViewController::onFileChanged(FileData* file, FileChangeType change)
 {
 	std::string key = file->getFullPath();
 	auto sourceSystem = file->getSourceFileData()->getSystem();
+	if (sourceSystem != nullptr)
+	{
+		const std::string& sourceName = sourceSystem->getName();
+		if (sourceName == "snes" || sourceName == "sgb" || sourceName == "satellaview" ||
+			sourceName == "sufami" || sourceName == "snes-msu1" || sourceName == "sgb-msu1")
+		{
+			sourceSystem->updateDisplayedGameCount();
+			if (sourceName != "snes")
+			{
+				SystemData* snesSystem = SystemData::getSystem("snes");
+				if (snesSystem != nullptr)
+					snesSystem->updateDisplayedGameCount();
+			}
+		}
+	}
 
 	auto it = mGameListViews.find(sourceSystem);
 	if (it != mGameListViews.cend())

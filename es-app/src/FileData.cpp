@@ -35,8 +35,29 @@
 #include "resources/TextureData.h"
 #include "views/gamelist/GameNameFormatter.h"
 #include "watchers/WatchersManager.h"
+#include "ThemeData.h"
 
 using namespace Utils::Platform;
+
+static std::string getSnesTranslationFlagPath(FileData* file)
+{
+	if (file == nullptr || file->getType() != FOLDER || file->getSystem() == nullptr || file->getSystem()->getName() != "snes")
+		return "";
+
+	FileData* parent = file->getParent();
+	if (parent == nullptr || Utils::String::toLower(parent->getFileName()) != "translates")
+		return "";
+
+	const std::string language = Utils::String::toLower(file->getFileName());
+	std::string flag;
+	if (language == "english") flag = "en";
+	else if (language == "portugues" || language == "portuguese") flag = "br";
+	else if (language == "spanish" || language == "espanol") flag = "es";
+	else return "";
+
+	const std::string themeRoot = ThemeData::getCurrentThemeRootPath();
+	return themeRoot.empty() ? "" : themeRoot + "/_inc/images/flags/" + flag + ".png";
+}
 
 static std::map<std::string, std::function<BindableProperty(FileData*)>> properties =
 {
@@ -48,6 +69,7 @@ static std::map<std::string, std::function<BindableProperty(FileData*)>> propert
 	{ "thumbnail",			[](FileData* file) { return BindableProperty(file->getThumbnailPath(false), BindablePropertyType::Path); } },
 	{ "video",				[](FileData* file) { return BindableProperty(file->getVideoPath(), BindablePropertyType::Path); } },
 	{ "marquee",			[](FileData* file) { return BindableProperty(file->getMarqueePath(), BindablePropertyType::Path); } },
+	{ "snesTranslationFlag", [](FileData* file) { return BindableProperty(getSnesTranslationFlagPath(file), BindablePropertyType::Path); } },
 	{ "favorite",			[](FileData* file) { return file->getFavorite(); } },
 	{ "hidden",				[](FileData* file) { return file->getHidden(); } },
 	{ "kidGame",			[](FileData* file) { return file->getKidGame(); } },

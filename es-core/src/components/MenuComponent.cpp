@@ -30,6 +30,8 @@ MenuComponent::MenuComponent(Window* window,
 	}
 
 	mMaxHeight = 0;
+	mMaxWidth = 0;
+	mTitleHeightOverride = 0;
 
 	auto theme = ThemeData::getMenuTheme();
 
@@ -287,11 +289,11 @@ void MenuComponent::setTitleImage(std::shared_ptr<ImageComponent> titleImage, bo
 	}
 
 	mTitleImage = titleImage;	
-	mTitleImage->setPadding(TITLE_HEIGHT * 0.15f);
+	mTitleImage->setPadding(getTitleHeight() * 0.15f);
 	
 	if (replaceTitle)
 	{		
-		mTitleImage->setMaxSize(mSize.x() * 0.85f, TITLE_HEIGHT);
+		mTitleImage->setMaxSize(mSize.x() * 0.85f, getTitleHeight());
 
 		mHeaderGrid->setColWidthPerc(0, 0);
 		mHeaderGrid->setColWidthPerc(1, 1);
@@ -306,9 +308,9 @@ void MenuComponent::setTitleImage(std::shared_ptr<ImageComponent> titleImage, bo
 	else
 	{
 		float width = (float)Math::min((int)Renderer::getScreenHeight(), (int)(Renderer::getScreenWidth() * 0.90f));
-		float iw = TITLE_HEIGHT / width;
+		float iw = getTitleHeight() / width;
 
-		mTitleImage->setMaxSize(1.3f * iw * mSize.x(), TITLE_HEIGHT);
+		mTitleImage->setMaxSize(1.3f * iw * mSize.x(), getTitleHeight());
 
 		mHeaderGrid->setColWidthPerc(0, 1 - iw);
 		mHeaderGrid->setColWidthPerc(1, iw);
@@ -353,7 +355,7 @@ void MenuComponent::setSubTitle(const std::string& text)
 	const float titleHeight = mTitle->getFont()->getLetterHeight() + (mSubtitle ? TITLE_WITHSUB_VERT_PADDING : TITLE_VERT_PADDING);
 	const float subtitleHeight = mSubtitle->getSize().y() + SUBTITLE_VERT_PADDING;
 
-	mHeaderGrid->setRowHeightPerc(0, titleHeight / TITLE_HEIGHT);	
+	mHeaderGrid->setRowHeightPerc(0, titleHeight / getTitleHeight());	
 
 	if (mTitleImage != nullptr)
 		setTitleImage(mTitleImage);
@@ -363,7 +365,26 @@ void MenuComponent::setSubTitle(const std::string& text)
 
 float MenuComponent::getTitleHeight() const
 {
-	return TITLE_HEIGHT;
+	return mTitleHeightOverride > 0 ? mTitleHeightOverride : TITLE_HEIGHT;
+}
+
+void MenuComponent::setMaxWidth(float maxWidth)
+{
+	if (mMaxWidth == maxWidth)
+		return;
+
+	mMaxWidth = maxWidth;
+	updateSize();
+}
+
+void MenuComponent::setTitleHeightOverride(float titleHeight)
+{
+	if (mTitleHeightOverride == titleHeight)
+		return;
+
+	mTitleHeightOverride = titleHeight;
+	mGrid.setRowHeight(0, getTitleHeight(), false);
+	updateSize();
 }
 
 float MenuComponent::getHeaderGridHeight() const
@@ -382,19 +403,21 @@ void MenuComponent::updateSize()
 	// GPI
 	if (Renderer::ScreenSettings::fullScreenMenus())
 	{
-		setSize(Renderer::getScreenWidth(), Renderer::getScreenHeight());
+		const float screenWidth = static_cast<float>(Renderer::getScreenWidth());
+		const float width = mMaxWidth > 0 ? std::min(screenWidth, mMaxWidth) : screenWidth;
+		setSize(width, Renderer::getScreenHeight());
 		return;
 	}
 
 	const float maxHeight = mMaxHeight <= 0 ? Renderer::getScreenHeight() * 0.75f : mMaxHeight;
 
-	float height = TITLE_HEIGHT + mList->getTotalRowHeight() + getButtonGridHeight() + 2;
+	float height = getTitleHeight() + mList->getTotalRowHeight() + getButtonGridHeight() + 2;
 	if (mTabs != nullptr && mTabs->size())
 		height += mTabs->getSize().y();
 
 	if(height > maxHeight)
 	{
-		height = TITLE_HEIGHT + getButtonGridHeight();
+		height = getTitleHeight() + getButtonGridHeight();
 		int i = 0;
 		while(i < mList->size())
 		{
@@ -408,6 +431,8 @@ void MenuComponent::updateSize()
 	}
 
 	float width = (float)Math::min((int)Renderer::getScreenHeight(), (int)(Renderer::getScreenWidth() * 0.90f));
+	if (mMaxWidth > 0)
+		width = std::min(width, mMaxWidth);
 	setSize(width, height);
 	
 	if (mTitleImage != nullptr && mTitle != nullptr && mTitle->isVisible())
@@ -431,7 +456,7 @@ void MenuComponent::onSizeChanged()
 	mBackground.fitTo(mSize, Vector3f::Zero(), Vector2f(-32, -32));
 
 	// update grid row/col sizes
-	mGrid.setRowHeight(0, TITLE_HEIGHT, false);
+	mGrid.setRowHeight(0, getTitleHeight(), false);
 	mGrid.setRowHeight(3, getButtonGridHeight(), false);
 
 	if (mTabs == nullptr || mTabs->size() == 0)
@@ -448,8 +473,8 @@ void MenuComponent::onSizeChanged()
 	if (mTitleImage != nullptr && (mTitle == nullptr || !mTitle->isVisible()))
 	{		
 		mTitleImage->setOrigin(0.5f, 0.5f);
-		mTitleImage->setPosition(getPosition().x() + mSize.x() / 2.0f, getPosition().y() + TITLE_HEIGHT / 2.0f);
-		mTitleImage->setMaxSize(mSize.x() * 0.85f, TITLE_HEIGHT);
+		mTitleImage->setPosition(getPosition().x() + mSize.x() / 2.0f, getPosition().y() + getTitleHeight() / 2.0f);
+		mTitleImage->setMaxSize(mSize.x() * 0.85f, getTitleHeight());
 	}
 }
 

@@ -64,6 +64,8 @@ public:
 	float getHeaderGridHeight() const;
 	float getTitleHeight() const;
 	float getButtonGridHeight() const;
+	void setMaxWidth(float maxWidth);
+	void setTitleHeightOverride(float titleHeight);
 
 	void setMaxHeight(float maxHeight) 
 	{ 
@@ -107,6 +109,8 @@ private:
 	std::vector< std::shared_ptr<ButtonComponent> > mButtons;
 
 	float mMaxHeight;
+	float mMaxWidth;
+	float mTitleHeightOverride;
 	std::function<void()> mOnTabIndexChanged;
 };
 

@@ -38,6 +38,7 @@ public:
 	// virtual std::vector<FileData*> getFileDataEntries() = 0;
 
 	void	moveToFolder(FolderData* folder);
+	void	openVariantFolder(FolderData* folder);
 	FolderData*		getCurrentFolder();
 
 	virtual void repopulate() override;
@@ -86,6 +87,8 @@ protected:
 	std::shared_ptr<IGameListView> mPopupSelfReference;
 	std::shared_ptr<GuiComponent>  mPopupParentView;	
 	std::function<void()> mOnExitPopup;
+	bool mReturnToSystemOnBack;
+	bool mHideVariantParentFolder;
 
 	std::vector<GuiComponent*> mThemeExtras;
 

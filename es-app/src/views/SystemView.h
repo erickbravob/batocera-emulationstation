@@ -91,6 +91,8 @@ private:
 	int		 moveCursorFast(bool forward = true);
 
 	void	 showNetplay();
+	void	 openSelectedSystem();
+	void	 showSnesVariantSelector();
 	bool	 showNavigationBar();
 	void	 showNavigationBar(const std::string& title, const std::function<std::string(SystemData* system)>& selector);
 

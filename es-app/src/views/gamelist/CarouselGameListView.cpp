@@ -74,7 +74,7 @@ void CarouselGameListView::populateList(const std::vector<FileData*>& files)
 	if (files.size() > 0)
 	{
 		bool showParentFolder = mRoot->getSystem()->getShowParentFolder();
-		if (showParentFolder && mCursorStack.size())
+		if (showParentFolder && mCursorStack.size() && !mHideVariantParentFolder)
 			mList.add(". .", createParentFolderData());
 
 		GameNameFormatter formatter(mRoot->getSystem());
@@ -83,7 +83,7 @@ void CarouselGameListView::populateList(const std::vector<FileData*>& files)
 			mList.add(formatter.getDisplayName(file), file);
 
 		// if we have the ".." PLACEHOLDER, then select the first game instead of the placeholder
-		if (showParentFolder && mCursorStack.size() && mList.size() > 1 && mList.getCursorIndex() == 0)
+		if (showParentFolder && mCursorStack.size() && !mHideVariantParentFolder && mList.size() > 1 && mList.getCursorIndex() == 0)
 			mList.setCursorIndex(1);
 	}
 	else

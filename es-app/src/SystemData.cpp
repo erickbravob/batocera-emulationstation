@@ -38,6 +38,293 @@
 
 using namespace Utils;
 
+namespace
+{
+	bool isSnesSelectorAccessorySystem(const std::string& systemName)
+	{
+		return systemName == "sgb" || systemName == "satellaview" || systemName == "sufami" ||
+			systemName == "snes-msu1" || systemName == "sgb-msu1";
+	}
+
+	enum class SnesFolderCategory
+	{
+		Official,
+		Hack,
+		Translation,
+		Accessory,
+		Other
+	};
+
+	std::string getSnesFolderKey(FolderData* folder)
+	{
+		if (folder == nullptr)
+			return std::string();
+
+		// Include the directory path as well as display metadata. Regional names
+		// such as "REGIÓN JAPÓN" may contain an accented character and must still
+		// resolve from the canonical folder name (JAPON/Japan).
+		return Utils::String::toLower(folder->getName() + " " + folder->getPath() + " " + folder->getMetadata().get("name") + " " + folder->getMetadata().get("desc"));
+	}
+
+	SnesFolderCategory classifySnesFolder(FolderData* folder)
+	{
+		const std::string key = getSnesFolderKey(folder);
+
+		// Accessories/expansions are checked first so an MSU-1 hack or a
+		// translated Super Game Boy library still remains an accessory library.
+		if (key.find("super-game") != std::string::npos ||
+			key.find("super game") != std::string::npos ||
+			key.find("satell") != std::string::npos ||
+			key.find("sufami") != std::string::npos ||
+			key.find("msu") != std::string::npos ||
+			key.find("bs-x") != std::string::npos ||
+			key.find("bsx") != std::string::npos ||
+			key.find("acces") != std::string::npos ||
+			key.find("expansi") != std::string::npos)
+			return SnesFolderCategory::Accessory;
+
+		if (key.find("trad") != std::string::npos ||
+			key.find("translat") != std::string::npos ||
+			key.find("translation") != std::string::npos ||
+			key.find("translated") != std::string::npos ||
+			key.find("traducc") != std::string::npos)
+			return SnesFolderCategory::Translation;
+
+		if (key.find("hack") != std::string::npos ||
+			key.find("modific") != std::string::npos ||
+			key.find("homebrew") != std::string::npos)
+			return SnesFolderCategory::Hack;
+
+		if (key.find("usa") != std::string::npos ||
+			key.find("america") != std::string::npos ||
+			key.find("europa") != std::string::npos ||
+			key.find("europe") != std::string::npos ||
+			key.find("jap") != std::string::npos ||
+			key.find("japon") != std::string::npos ||
+			key.find("japan") != std::string::npos)
+			return SnesFolderCategory::Official;
+
+		return SnesFolderCategory::Other;
+	}
+
+	void collectSnesTranslationFolders(FolderData* parent, std::vector<FolderData*>& folders)
+	{
+		if (parent == nullptr)
+			return;
+
+		for (auto child : parent->getChildren())
+		{
+			if (child->getType() != FOLDER)
+				continue;
+
+			auto folder = static_cast<FolderData*>(child);
+			if (folder->getFilesRecursive(GAME).empty())
+				continue;
+
+			bool hasPlayableChildFolder = false;
+			for (auto nested : folder->getChildren())
+			{
+				if (nested->getType() == FOLDER &&
+					!static_cast<FolderData*>(nested)->getFilesRecursive(GAME).empty())
+				{
+					hasPlayableChildFolder = true;
+					break;
+				}
+			}
+
+			if (hasPlayableChildFolder)
+				collectSnesTranslationFolders(folder, folders);
+			else
+				folders.push_back(folder);
+		}
+	}
+
+	std::vector<FolderData*> getPlayableSnesFolders(SystemData* system)
+	{
+		std::vector<FolderData*> folders;
+		if (system == nullptr || system->getRootFolder() == nullptr)
+			return folders;
+
+		for (auto child : system->getRootFolder()->getChildren())
+		{
+			if (child->getType() != FOLDER)
+				continue;
+
+			auto folder = static_cast<FolderData*>(child);
+			if (classifySnesFolder(folder) == SnesFolderCategory::Translation)
+				collectSnesTranslationFolders(folder, folders);
+			else if (!folder->getFilesRecursive(GAME).empty())
+				folders.push_back(folder);
+		}
+
+		return folders;
+	}
+
+	std::string formatSnesCount(int variants, int games)
+	{
+		return std::to_string(variants) + "V / " + std::to_string(games) + "J";
+	}
+
+	std::string formatSnesCategoryDisplay(int variants, int games)
+	{
+		if (variants == 0 && games == 0)
+			return "NINGUNO";
+
+		const std::string variantLabel = variants == 1 ? " VARIANTE · " : " VARIANTES · ";
+		const std::string gameLabel = games == 1 ? " JUEGO" : " JUEGOS";
+		return std::to_string(variants) + variantLabel + std::to_string(games) + gameLabel;
+	}
+
+	std::string formatSnesGameDisplay(int games)
+	{
+		if (games == 0)
+			return "NINGUNO";
+
+		return std::to_string(games) + (games == 1 ? " JUEGO" : " JUEGOS");
+	}
+
+	std::string getSnesFolderDisplayName(FolderData* folder, SnesFolderCategory category)
+	{
+		if (folder == nullptr)
+			return std::string();
+
+		std::string folderName = folder->getMetadata().get("name");
+		if (folderName.empty() || category == SnesFolderCategory::Translation)
+		{
+			const std::string language = Utils::String::toLower(folder->getFileName());
+			if (category == SnesFolderCategory::Translation && language == "english") folderName = "INGLÉS";
+			else if (category == SnesFolderCategory::Translation && (language == "portugues" || language == "portuguese")) folderName = "PORTUGUÉS (BRASIL)";
+			else if (category == SnesFolderCategory::Translation && (language == "spanish" || language == "espanol")) folderName = "ESPAÑOL";
+			else if (folderName.empty()) folderName = folder->getName();
+		}
+		return folderName;
+	}
+
+	bool isSnesFolderAncestor(FolderData* ancestor, FileData* game)
+	{
+		for (FileData* node = game; node != nullptr; node = node->getParent())
+		{
+			if (node == ancestor)
+				return true;
+		}
+		return false;
+	}
+
+	FolderData* getSnesVariantFolderForGame(SystemData* system, FileData* game)
+	{
+		for (auto folder : getPlayableSnesFolders(system))
+		{
+			if (isSnesFolderAncestor(folder, game))
+				return folder;
+		}
+		return nullptr;
+	}
+
+	std::string getSnesRegionKey(FolderData* folder);
+
+	std::string getSnesLastPlayedVariantLabel(SystemData* system, FileData* game)
+	{
+		if (game == nullptr)
+			return "SIN DATOS";
+
+		const std::string gameSystem = game->getSystem() != nullptr ? game->getSystem()->getName() : std::string();
+		if (!gameSystem.empty() && gameSystem != "snes")
+		{
+			if (gameSystem == "sgb") return "SUPER GAME BOY";
+			if (gameSystem == "satellaview") return "SATELLAVIEW";
+			if (gameSystem == "sufami") return "SUFAMI TURBO";
+			if (gameSystem == "snes-msu1") return "SNES MSU-1";
+			if (gameSystem == "sgb-msu1") return "SGB MSU-1";
+		}
+
+		FolderData* folder = getSnesVariantFolderForGame(system, game);
+		if (folder == nullptr)
+			return "SNES";
+
+		const SnesFolderCategory category = classifySnesFolder(folder);
+		if (category == SnesFolderCategory::Official)
+		{
+			const std::string region = getSnesRegionKey(folder);
+			return region == "us" ? "USA" : (region == "jp" ? "JAPÓN" : "EUROPA");
+		}
+
+		const std::string name = getSnesFolderDisplayName(folder, category);
+		if (category == SnesFolderCategory::Translation)
+			return name.empty() ? "TRADUCCIONES" : "TRAD. " + Utils::String::toUpper(name);
+		if (category == SnesFolderCategory::Accessory)
+			return name.empty() ? "ACCESORIOS" : Utils::String::toUpper(name);
+		if (category == SnesFolderCategory::Hack)
+			return name.empty() ? "HACKS" : Utils::String::toUpper(name);
+		return name.empty() ? "SNES" : Utils::String::toUpper(name);
+	}
+
+	std::string getSnesVariantId(SystemData* system, FolderData* folder)
+	{
+		if (system == nullptr || folder == nullptr)
+			return std::string();
+
+		std::string id = Utils::FileSystem::createRelativePath(folder->getPath(), system->getRootFolder()->getPath(), false);
+		if (Utils::String::startsWith(id, "./"))
+			id.erase(0, 2);
+		if (Utils::String::startsWith(id, ".\\"))
+			id.erase(0, 2);
+		return id;
+	}
+
+	bool isSnesDefaultEligible(FolderData* folder)
+	{
+		return folder != nullptr && classifySnesFolder(folder) == SnesFolderCategory::Official;
+	}
+
+	std::string getSnesRegionKey(FolderData* folder)
+	{
+		const std::string key = getSnesFolderKey(folder);
+		if (key.find("jap") != std::string::npos || key.find("japan") != std::string::npos)
+			return "jp";
+		if (key.find("usa") != std::string::npos || key.find("america") != std::string::npos)
+			return "us";
+		return "eu";
+	}
+
+	std::string getSnesDefaultRegion(SystemData* system)
+	{
+		if (system == nullptr || system->getRootFolder() == nullptr)
+			return "eu";
+
+		FolderData* firstEligible = nullptr;
+		FolderData* usa = nullptr;
+		const std::string stored = Settings::getInstance()->getString("snes.defaultVariant");
+
+		for (auto folder : getPlayableSnesFolders(system))
+		{
+			if (!isSnesDefaultEligible(folder))
+				continue;
+
+			if (firstEligible == nullptr)
+				firstEligible = folder;
+			if (!stored.empty() && (stored == getSnesVariantId(system, folder) || stored == folder->getName()))
+				return getSnesRegionKey(folder);
+
+			if (usa == nullptr && getSnesRegionKey(folder) == "us")
+				usa = folder;
+		}
+
+		FolderData* fallback = usa != nullptr ? usa : firstEligible;
+		if (fallback == nullptr)
+			return "eu";
+
+		// Legacy defaults may point to a hack, translation, accessory, or folder
+		// that no longer exists. Normalize that persisted value to a real region.
+		const std::string fallbackId = getSnesVariantId(system, fallback);
+		if (!stored.empty() && stored != fallbackId && stored != fallback->getName())
+		{
+			Settings::getInstance()->setString("snes.defaultVariant", fallbackId);
+			Settings::getInstance()->saveFile();
+		}
+		return getSnesRegionKey(fallback);
+	}
+}
+
 static std::map<std::string, std::function<BindableProperty(SystemData*)>> properties =
 {
 	{ "name",				[] (SystemData* sys) { return sys->getName(); } },
@@ -477,7 +764,19 @@ void SystemData::createGroupedSystems()
 
 	for (auto sys : sSystemVector)
 	{
-		if (sys->isCollection() || sys->getSystemEnvData()->mGroup.empty())
+		if (sys->isCollection())
+			continue;
+
+		// These libraries are surfaced from the SNES selector. Keep each real
+		// SystemData/root intact for launching, gamelists and scraping, but do not
+		// wrap them in a synthetic wheel group (nest-snes-family or gb).
+		if (isSnesSelectorAccessorySystem(sys->getName()))
+		{
+			sys->getSystemEnvData()->mAutoUngroup = true;
+			continue;
+		}
+
+		if (sys->getSystemEnvData()->mGroup.empty())
 			continue;
 		
 		if (Settings::getInstance()->getBool(sys->getSystemEnvData()->mGroup + ".ungroup") || Settings::getInstance()->getBool(sys->getName() + ".ungroup"))
@@ -1027,6 +1326,11 @@ bool SystemData::loadConfig(Window* window)
 	{
 		createGroupedSystems();
 
+		// Group construction may populate roots after counts were queried.
+		// Recompute with the complete system tree available, including SGB.
+		for (auto sys : SystemData::sSystemVector)
+			sys->updateDisplayedGameCount();
+
 		// Load features before creating collections
 		//loadFeatures();
 
@@ -1357,6 +1661,11 @@ bool SystemData::isVisible()
 		return true;
 	}
 
+	// SNES accessory libraries are opened from the SNES selector and must not
+	// create separate or synthetic entries in the main system carousel.
+	if (isSnesSelectorAccessorySystem(getName()))
+		return false;
+
 	if (isGroupChildSystem())
 		return false;
 
@@ -1508,10 +1817,21 @@ GameCountInfo* SystemData::getGameCountInfo()
 	mGameCountInfo->playCount = 0;
 	mGameCountInfo->gamesPlayed = 0;
 	mGameCountInfo->playTime = 0;
+	mGameCountInfo->snesOfficialVariants = 0;
+	mGameCountInfo->snesOfficialGames = 0;
+	mGameCountInfo->snesHackVariants = 0;
+	mGameCountInfo->snesHackGames = 0;
+	mGameCountInfo->snesTranslationVariants = 0;
+	mGameCountInfo->snesTranslationGames = 0;
+	mGameCountInfo->snesAccessoryVariants = 0;
+	mGameCountInfo->snesAccessoryGames = 0;
+		std::vector<std::pair<int, std::string>> variantNames;
+		std::vector<std::pair<int, std::string>> accessoryNames;
 	
 	int mostPlayCount = 0;
 	long gameTime = 0;
 	std::string mostCountPlayed;
+	FileData* snesLastPlayedGame = nullptr;
 
 	for (auto game : games)
 	{
@@ -1548,11 +1868,191 @@ GameCountInfo* SystemData::getGameCountInfo()
 
 		auto lastPlayed = game->getMetadata(MetaDataId::LastPlayed);
 		if (!lastPlayed.empty() && lastPlayed > mGameCountInfo->lastPlayedDate)
+		{
 			mGameCountInfo->lastPlayedDate = lastPlayed;
+			if (getName() == "snes")
+				snesLastPlayedGame = game;
+		}
 	}
 
 	if (mGameCountInfo->mostPlayed.empty() && !mostCountPlayed.empty())
 		mGameCountInfo->mostPlayed = mostCountPlayed;
+
+	if (getName() == "snes")
+	{
+		auto snesVariantFolders = getPlayableSnesFolders(this);
+		for (auto folder : snesVariantFolders)
+		{
+			const int folderGames = static_cast<int>(folder->getFilesRecursive(GAME).size());
+			if (folderGames == 0)
+				continue;
+
+			const SnesFolderCategory category = classifySnesFolder(folder);
+			const std::string folderName = getSnesFolderDisplayName(folder, category);
+
+			const std::string folderKey = getSnesFolderKey(folder);
+			int order = 5;
+			if (category == SnesFolderCategory::Official)
+				order = folderKey.find("usa") != std::string::npos || folderKey.find("america") != std::string::npos ? 0 :
+					(folderKey.find("jap") != std::string::npos || folderKey.find("japan") != std::string::npos ? 2 : 1);
+			else if (category == SnesFolderCategory::Hack)
+				order = 3;
+			else if (category == SnesFolderCategory::Translation)
+				order = 4;
+
+			if (category == SnesFolderCategory::Accessory)
+			{
+				const int accessoryOrder = folderKey.find("super-game") != std::string::npos || folderKey.find("super game") != std::string::npos ? 0 :
+					(folderKey.find("satell") != std::string::npos || folderKey.find("bs-x") != std::string::npos || folderKey.find("bsx") != std::string::npos ? 1 :
+					(folderKey.find("sufami") != std::string::npos ? 2 : (folderKey.find("msu") != std::string::npos ? 3 : 4)));
+				accessoryNames.emplace_back(accessoryOrder, folderName);
+			}
+			else
+			{
+				variantNames.emplace_back(order, folderName);
+			}
+
+			switch (category)
+			{
+			case SnesFolderCategory::Official:
+				mGameCountInfo->snesOfficialVariants++;
+				mGameCountInfo->snesOfficialGames += folderGames;
+				break;
+			case SnesFolderCategory::Hack:
+				mGameCountInfo->snesHackVariants++;
+				mGameCountInfo->snesHackGames += folderGames;
+				break;
+			case SnesFolderCategory::Translation:
+				mGameCountInfo->snesTranslationVariants++;
+				mGameCountInfo->snesTranslationGames += folderGames;
+				break;
+			case SnesFolderCategory::Accessory:
+				mGameCountInfo->snesAccessoryVariants++;
+				mGameCountInfo->snesAccessoryGames += folderGames;
+				break;
+			default:
+				break;
+			}
+		}
+
+		// These hidden, independently configured systems keep their own
+		// emulator/save data but are counted once in SNES as accessory libraries.
+		// If a matching folder already exists inside SNES, the normal folder pass
+		// above owns its count and prevents adding the system root a second time.
+		const std::vector<std::pair<std::string, std::string>> accessorySystems = {
+			{ "sgb", "SUPER GAME BOY" },
+			{ "satellaview", "SATELLAVIEW" },
+			{ "sufami", "SUFAMI TURBO" },
+			{ "snes-msu1", "SNES MSU-1" },
+			{ "sgb-msu1", "SGB MSU-1" }
+		};
+		for (const auto& accessory : accessorySystems)
+		{
+			const std::string& systemId = accessory.first;
+			const bool hasAccessoryFolder = std::any_of(snesVariantFolders.begin(), snesVariantFolders.end(), [&systemId](FolderData* folder)
+			{
+				if (folder->getSystem() != nullptr && folder->getSystem()->getName() == systemId)
+					return true;
+				const std::string key = getSnesFolderKey(folder);
+				if (systemId == "sgb")
+					return key.find("super-game") != std::string::npos || key.find("super game") != std::string::npos ||
+						key.find("supergameboy") != std::string::npos || key.find("sgb") != std::string::npos;
+				if (systemId == "satellaview")
+					return key.find("satell") != std::string::npos || key.find("bs-x") != std::string::npos || key.find("bsx") != std::string::npos;
+				if (systemId == "snes-msu1")
+					return key.find("snes") != std::string::npos && key.find("msu") != std::string::npos;
+				if (systemId == "sgb-msu1")
+					return (key.find("sgb") != std::string::npos || key.find("gameboy") != std::string::npos || key.find("game boy") != std::string::npos) &&
+						key.find("msu") != std::string::npos;
+				return key.find("sufami") != std::string::npos;
+			});
+			auto accessorySystem = SystemData::getSystem(systemId);
+			auto accessoryRoot = accessorySystem != nullptr ? accessorySystem->getRootFolder() : nullptr;
+			if (hasAccessoryFolder || accessoryRoot == nullptr)
+				continue;
+
+			const int accessoryGames = static_cast<int>(accessoryRoot->getFilesRecursive(GAME).size());
+			if (accessoryGames == 0)
+				continue;
+
+			const int accessoryOrder = systemId == "sgb" ? 0 : (systemId == "satellaview" ? 1 :
+				(systemId == "sufami" ? 2 : (systemId == "snes-msu1" ? 3 : 4)));
+			mGameCountInfo->snesAccessoryVariants++;
+			mGameCountInfo->snesAccessoryGames += accessoryGames;
+			mGameCountInfo->visibleGames += accessoryGames;
+			mGameCountInfo->totalGames += accessoryGames;
+			accessoryNames.emplace_back(accessoryOrder, accessory.second);
+
+			for (auto game : accessoryRoot->getFilesRecursive(GAME, true))
+			{
+				if (game->getFavorite())
+					mGameCountInfo->favoriteCount++;
+
+				const int playCount = Utils::String::toInteger(game->getMetadata(MetaDataId::PlayCount));
+				if (playCount > 0)
+				{
+					mGameCountInfo->gamesPlayed++;
+					mGameCountInfo->playCount += playCount;
+				}
+
+				mGameCountInfo->playTime += atol(game->getMetadata(MetaDataId::GameTime).c_str());
+				const auto lastPlayed = game->getMetadata(MetaDataId::LastPlayed);
+				if (!lastPlayed.empty() && lastPlayed > mGameCountInfo->lastPlayedDate)
+				{
+					mGameCountInfo->lastPlayedDate = lastPlayed;
+					snesLastPlayedGame = game;
+				}
+			}
+		}
+
+		auto joinFolderNames = [](std::vector<std::pair<int, std::string>>& names)
+		{
+			std::stable_sort(names.begin(), names.end(), [](const auto& left, const auto& right)
+			{
+				if (left.first != right.first)
+					return left.first < right.first;
+				return Utils::String::toLower(left.second) < Utils::String::toLower(right.second);
+			});
+
+			std::string display;
+			for (const auto& entry : names)
+			{
+				if (!display.empty())
+					display += " · ";
+				display += entry.second;
+			}
+			return display.empty() ? std::string("NINGUNO") : display;
+		};
+		mGameCountInfo->snesVariantNamesDisplay = joinFolderNames(variantNames);
+		mGameCountInfo->snesAccessoryNamesDisplay = joinFolderNames(accessoryNames);
+
+		mGameCountInfo->snesFavoriteDisplay = mGameCountInfo->favoriteCount == 0
+			? "NINGUNO" : std::to_string(mGameCountInfo->favoriteCount);
+		mGameCountInfo->snesLibraryDisplay = mGameCountInfo->totalGames == 0
+			? "NINGUNO" : std::to_string(mGameCountInfo->totalGames) + " JUEGOS";
+		mGameCountInfo->snesPlayedDisplay = mGameCountInfo->totalGames == 0
+			? "NINGUNO" : std::to_string(mGameCountInfo->gamesPlayed) + " DE " + std::to_string(mGameCountInfo->totalGames);
+		if (snesLastPlayedGame != nullptr)
+		{
+			mGameCountInfo->snesLastPlayedGameDisplay = snesLastPlayedGame->getName();
+			mGameCountInfo->snesLastPlayedVariantDisplay = getSnesLastPlayedVariantLabel(this, snesLastPlayedGame);
+		}
+		else
+		{
+			mGameCountInfo->snesLastPlayedGameDisplay = "SIN PARTIDAS";
+			mGameCountInfo->snesLastPlayedVariantDisplay = "SIN HISTORIAL";
+		}
+		if (mGameCountInfo->lastPlayedDate.empty())
+		{
+			mGameCountInfo->snesLastPlayedDisplay = "NUNCA";
+		}
+		else
+		{
+			Utils::Time::DateTime date = mGameCountInfo->lastPlayedDate;
+			mGameCountInfo->snesLastPlayedDisplay = date.getTime() == 0
+				? "NUNCA" : Utils::Time::timeToString(date.getTime(), "%x");
+		}
+	}
 
 	return mGameCountInfo;
 	/*
@@ -1570,6 +2070,18 @@ void SystemData::updateDisplayedGameCount()
 		delete mGameCountInfo;
 
 	mGameCountInfo = nullptr;
+
+	// The SNES dossier combines regional folders and hidden accessory systems.
+	// Refresh its cached totals whenever any member library is refreshed.
+	if (getName() != "snes" && isSnesSelectorAccessorySystem(getName()))
+	{
+		SystemData* snesSystem = SystemData::getSystem("snes");
+		if (snesSystem != nullptr && snesSystem->mGameCountInfo != nullptr)
+		{
+			delete snesSystem->mGameCountInfo;
+			snesSystem->mGameCountInfo = nullptr;
+		}
+	}
 }
 
 void SystemData::loadTheme()
@@ -1635,6 +2147,121 @@ void SystemData::loadTheme()
 			auto name = "system." + property.first;
 			if (sysData.find(name) == sysData.cend())
 				sysData.insert(std::pair<std::string, std::string>("system." + property.first, property.second(this).toString()));
+		}
+
+		// The theme evaluates its SNES conditions while loading each system.
+		// Define safe values globally; SNES replaces these with its live state below.
+		sysData["system.snesDefaultRegion"] = "";
+		sysData["system.snesHasUsVariant"] = "false";
+		sysData["system.snesHasEuVariant"] = "false";
+		sysData["system.snesHasJpVariant"] = "false";
+
+		// SNES default presentation is independent from the global ThemeRegionName.
+		// This keeps other systems unchanged while making the selected SNES variant
+		// drive its own fanart, console, controller and regional metadata.
+		if (getName() == "snes")
+		{
+			sysData["system.snesDefaultRegion"] = getSnesDefaultRegion(this);
+
+			// Expose the official regional libraries to the theme so its logo row
+			// and flag strip reflect folders that actually exist in this collection.
+			bool hasUsRegion = false;
+			bool hasEuRegion = false;
+			bool hasJpRegion = false;
+			for (auto child : mRootFolder->getChildren())
+			{
+				if (child->getType() != FOLDER)
+					continue;
+
+				auto folder = static_cast<FolderData*>(child);
+				if (classifySnesFolder(folder) != SnesFolderCategory::Official)
+					continue;
+				if (folder->getFilesRecursive(GAME).empty())
+					continue;
+
+				const std::string key = getSnesFolderKey(folder);
+				if (key.find("usa") != std::string::npos || key.find("america") != std::string::npos)
+					hasUsRegion = true;
+				else if (key.find("jap") != std::string::npos)
+					hasJpRegion = true;
+				else if (key.find("europ") != std::string::npos)
+					hasEuRegion = true;
+			}
+
+			const std::vector<std::string> regionOrder = { "us", "eu", "jp" };
+			std::vector<std::string> availableRegions;
+			if (hasUsRegion) availableRegions.emplace_back("us");
+			if (hasEuRegion) availableRegions.emplace_back("eu");
+			if (hasJpRegion) availableRegions.emplace_back("jp");
+			const float regionStep = 0.085f;
+			const float flagStartX = 0.680f;
+			const float flagStep = 0.048f;
+			const float regionStartX = availableRegions.empty() ? 0.815f :
+				0.815f - regionStep * (availableRegions.size() - 1) / 2.0f;
+			for (const auto& region : regionOrder)
+			{
+				const bool available = region == "us" ? hasUsRegion : (region == "eu" ? hasEuRegion : hasJpRegion);
+				sysData["system.snesHas" + (region == "us" ? std::string("Us") : (region == "eu" ? std::string("Eu") : std::string("Jp"))) + "Variant"] = available ? "true" : "false";
+				if (!available)
+					continue;
+
+				const auto index = std::find(availableRegions.begin(), availableRegions.end(), region) - availableRegions.begin();
+				const std::string prefix = "system.snes" + (region == "us" ? std::string("Us") : (region == "eu" ? std::string("Eu") : std::string("Jp")));
+				sysData[prefix + "LogoX"] = std::to_string(regionStartX + regionStep * index);
+				sysData[prefix + "FlagX"] = std::to_string(flagStartX + flagStep * index);
+			}
+
+			const GameCountInfo* info = getGameCountInfo();
+			const auto estimatedLines = [](const std::string& text)
+			{
+				constexpr size_t charsPerLine = 54;
+				return std::max<size_t>(1, (text.size() + charsPerLine - 1) / charsPerLine);
+			};
+			const float lineHeight = 0.020f;
+			const float variantsLabelY = 0.350f;
+			const float variantsValueY = variantsLabelY + 0.016f;
+			// Region names become a single animated icon row; reserve one line only.
+			const float variantsHeight = 0.030f;
+			const float accessoriesLabelY = variantsValueY + variantsHeight + 0.006f;
+			const float accessoriesValueY = accessoriesLabelY + 0.016f;
+			const float accessoriesHeight = lineHeight * estimatedLines(info->snesAccessoryNamesDisplay);
+			const float statsRuleY = accessoriesValueY + accessoriesHeight + 0.014f;
+			const float statsOffset = std::max(0.0f, statsRuleY + 0.014f - 0.452f);
+
+			sysData["system.snesVariantLabelY"] = std::to_string(variantsLabelY);
+			sysData["system.snesVariantValueY"] = std::to_string(variantsValueY);
+			sysData["system.snesVariantValueHeight"] = std::to_string(variantsHeight);
+			sysData["system.snesAccessoryLabelY"] = std::to_string(accessoriesLabelY);
+			sysData["system.snesAccessoryValueY"] = std::to_string(accessoriesValueY);
+			sysData["system.snesAccessoryValueHeight"] = std::to_string(accessoriesHeight);
+			sysData["system.snesStatsRuleY"] = std::to_string(statsRuleY);
+
+			auto addStatsOffset = [&sysData, statsOffset](const std::string& name, float baseY)
+			{
+				sysData["system." + name] = std::to_string(baseY + statsOffset);
+			};
+			addStatsOffset("snesLibraryLabelY", 0.452f);
+			addStatsOffset("snesLibraryValueY", 0.474f);
+			addStatsOffset("snesPlayedLabelY", 0.452f);
+			addStatsOffset("snesPlayedValueY", 0.474f);
+			addStatsOffset("snesFavoriteLabelY", 0.525f);
+			addStatsOffset("snesFavoriteValueY", 0.547f);
+			addStatsOffset("snesLastLabelY", 0.525f);
+			addStatsOffset("snesLastValueY", 0.547f);
+			addStatsOffset("snesCategoryRuleY", 0.588f);
+			addStatsOffset("snesCategoryTitleY", 0.602f);
+			addStatsOffset("snesOfficialTileY", 0.650f);
+			addStatsOffset("snesHackTileY", 0.650f);
+			addStatsOffset("snesTranslationTileY", 0.708f);
+			addStatsOffset("snesAccessoryTileY", 0.708f);
+			addStatsOffset("snesOfficialLabelY", 0.631f);
+			addStatsOffset("snesOfficialValueY", 0.649f);
+			addStatsOffset("snesHackLabelY", 0.631f);
+			addStatsOffset("snesHackValueY", 0.649f);
+			addStatsOffset("snesTranslationLabelY", 0.689f);
+			addStatsOffset("snesTranslationValueY", 0.707f);
+			addStatsOffset("snesAccessoryCountLabelY", 0.689f);
+			addStatsOffset("snesAccessoryCountValueY", 0.707f);
 		}
 
 		// Variables 
@@ -2237,6 +2864,9 @@ BindableProperty SystemData::getProperty(const std::string& name)
 		return BindableProperty(mBindableRandom);		
 	}
 
+	if (name == "snesDefaultRegion")
+		return BindableProperty(getName() == "snes" ? getSnesDefaultRegion(this) : std::string(), BindablePropertyType::String);
+
 	if (name == "image" || name == "logo")
 	{
 		if (mTheme != nullptr)
@@ -2322,6 +2952,78 @@ BindableProperty SystemData::getProperty(const std::string& name)
 
 		return BindableProperty::EmptyString;
 	}
+
+	if (name == "snesOfficialCount")
+		return BindableProperty(formatSnesCount(info->snesOfficialVariants, info->snesOfficialGames), BindablePropertyType::String);
+
+	if (name == "snesOfficialVariants")
+		return BindableProperty(std::to_string(info->snesOfficialVariants), BindablePropertyType::String);
+
+	if (name == "snesOfficialGames")
+		return BindableProperty(std::to_string(info->snesOfficialGames), BindablePropertyType::String);
+
+	if (name == "snesOfficialDisplay")
+		return BindableProperty(formatSnesCategoryDisplay(info->snesOfficialVariants, info->snesOfficialGames), BindablePropertyType::String);
+
+	if (name == "snesHackCount")
+		return BindableProperty(formatSnesGameDisplay(info->snesHackGames), BindablePropertyType::String);
+
+	if (name == "snesHackVariants")
+		return BindableProperty(std::to_string(info->snesHackVariants), BindablePropertyType::String);
+
+	if (name == "snesHackGames")
+		return BindableProperty(std::to_string(info->snesHackGames), BindablePropertyType::String);
+
+	if (name == "snesHackDisplay")
+		return BindableProperty(formatSnesGameDisplay(info->snesHackGames), BindablePropertyType::String);
+
+	if (name == "snesTranslationCount")
+		return BindableProperty(formatSnesCount(info->snesTranslationVariants, info->snesTranslationGames), BindablePropertyType::String);
+
+	if (name == "snesTranslationVariants")
+		return BindableProperty(std::to_string(info->snesTranslationVariants), BindablePropertyType::String);
+
+	if (name == "snesTranslationGames")
+		return BindableProperty(std::to_string(info->snesTranslationGames), BindablePropertyType::String);
+
+	if (name == "snesTranslationDisplay")
+		return BindableProperty(formatSnesCategoryDisplay(info->snesTranslationVariants, info->snesTranslationGames), BindablePropertyType::String);
+
+	if (name == "snesAccessoryCount")
+		return BindableProperty(formatSnesCount(info->snesAccessoryVariants, info->snesAccessoryGames), BindablePropertyType::String);
+
+	if (name == "snesAccessoryVariants")
+		return BindableProperty(std::to_string(info->snesAccessoryVariants), BindablePropertyType::String);
+
+	if (name == "snesAccessoryGames")
+		return BindableProperty(std::to_string(info->snesAccessoryGames), BindablePropertyType::String);
+
+	if (name == "snesAccessoryDisplay")
+		return BindableProperty(formatSnesCategoryDisplay(info->snesAccessoryVariants, info->snesAccessoryGames), BindablePropertyType::String);
+
+	if (name == "snesFavoriteDisplay")
+		return BindableProperty(info->snesFavoriteDisplay, BindablePropertyType::String);
+
+	if (name == "snesLastPlayedDisplay")
+		return BindableProperty(info->snesLastPlayedDisplay, BindablePropertyType::String);
+
+	if (name == "snesLastPlayedGameDisplay")
+		return BindableProperty(info->snesLastPlayedGameDisplay, BindablePropertyType::String);
+
+	if (name == "snesLastPlayedVariantDisplay")
+		return BindableProperty(info->snesLastPlayedVariantDisplay, BindablePropertyType::String);
+
+	if (name == "snesLibraryDisplay")
+		return BindableProperty(info->snesLibraryDisplay, BindablePropertyType::String);
+
+	if (name == "snesPlayedDisplay")
+		return BindableProperty(info->snesPlayedDisplay, BindablePropertyType::String);
+
+	if (name == "snesVariantNamesDisplay")
+		return BindableProperty(info->snesVariantNamesDisplay, BindablePropertyType::String);
+
+	if (name == "snesAccessoryNamesDisplay")
+		return BindableProperty(info->snesAccessoryNamesDisplay, BindablePropertyType::String);
 
 	return BindableProperty::Null;
 }

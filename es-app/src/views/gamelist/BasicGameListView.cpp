@@ -67,7 +67,7 @@ void BasicGameListView::populateList(const std::vector<FileData*>& files)
 	if (files.size() > 0)
 	{
 		bool showParentFolder = mRoot->getSystem()->getShowParentFolder();
-		if (showParentFolder && mCursorStack.size())
+		if (showParentFolder && mCursorStack.size() && !mHideVariantParentFolder)
 			mList.add(". .", createParentFolderData(), true);
 
 		GameNameFormatter formatter(mRoot->getSystem());

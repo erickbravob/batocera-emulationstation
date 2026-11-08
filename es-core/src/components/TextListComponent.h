@@ -9,12 +9,14 @@
 #include "Sound.h"
 #include <memory>
 #include "components/ScrollbarComponent.h"
+#include "components/ImageComponent.h"
 #include "Settings.h"
 #include "Window.h"
 #include "InputManager.h"
 #include "utils/Delegate.h"
 #include "CarouselComponent.h"
 #include "BindingManager.h"
+#include <algorithm>
 
 #define HOLD_TIME 1000
 
@@ -25,6 +27,7 @@ struct TextListData
 	unsigned int colorId;
 	std::shared_ptr<TextCache> textCache;
 	std::shared_ptr<GuiComponent> itemTemplate;
+	std::shared_ptr<ImageComponent> translationFlag;
 };
 
 template <typename T>
@@ -363,9 +366,13 @@ void TextListComponent<T>::render(const Transform4x4f& parentTrans)
 			{
 			case ALIGN_LEFT:
 				offset[0] = mHorizontalMargin;
+				if (entry.data.translationFlag)
+					offset[0] += entrySize * 0.64f;
 				break;
 			case ALIGN_CENTER:
-				offset[0] = (int)((mSize.x() - entry.data.textCache->metrics.size.x()) / 2);
+				offset[0] = (int)((mSize.x() - entry.data.textCache->metrics.size.x() - (entry.data.translationFlag ? entrySize * 0.64f : 0.0f)) / 2);
+				if (entry.data.translationFlag)
+					offset[0] += entrySize * 0.64f;
 				if (offset[0] < mHorizontalMargin)
 					offset[0] = mHorizontalMargin;
 				break;
@@ -375,6 +382,17 @@ void TextListComponent<T>::render(const Transform4x4f& parentTrans)
 				if (offset[0] < mHorizontalMargin)
 					offset[0] = mHorizontalMargin;
 				break;
+			}
+
+			if (entry.data.translationFlag)
+			{
+				const float flagSize = entrySize * 0.48f;
+				const float flagGap = entrySize * 0.16f;
+				const float flagX = std::max(mHorizontalMargin, offset[0] - flagSize - flagGap);
+				entry.data.translationFlag->setMaxSize(flagSize, flagSize);
+				entry.data.translationFlag->setPosition(flagX, y + (entrySize - flagSize) / 2.0f);
+				entry.data.translationFlag->setOpacity(getOpacity());
+				entry.data.translationFlag->render(trans);
 			}
 
 			// render text
@@ -577,6 +595,16 @@ void TextListComponent<T>::add(const std::string& name, const T& obj, unsigned i
 	entry.name = name;
 	entry.object = obj;
 	entry.data.colorId = color;
+	entry.data.translationFlag.reset();
+	if (IBindable* bindable = getBindable(entry))
+	{
+		const BindableProperty flag = bindable->getProperty("snesTranslationFlag");
+		if (flag.type == BindablePropertyType::Path && !flag.s.empty())
+		{
+			entry.data.translationFlag = std::make_shared<ImageComponent>(mWindow);
+			entry.data.translationFlag->setImage(flag.s);
+		}
+	}
 	static_cast<IList< TextListData, T >*>(this)->add(entry);
 }
 
